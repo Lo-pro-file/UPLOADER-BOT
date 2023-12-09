@@ -1,84 +1,123 @@
-# @SPACE_X_BOTS | @Clinton_Abraham </> 
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# (c) Shrimadhav U K | X-Noid | @DC4_WARRIOR
 
-import logging, requests, urllib.parse, os, time, shutil, asyncio, json, math
+# the logging things
+import logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logging.getLogger("pyrogram").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
+import requests, urllib.parse, filetype, os, time, shutil, tldextract, asyncio, json, math
+
 from config import Config
-from pyrogram import filters
-from database.access import clinton
-from translation import Translation
 from database.adduser import AddUser
+from translation import Translation
+logging.getLogger("pyrogram").setLevel(logging.WARNING)
+from pyrogram import filters
 from pyrogram import Client as Clinton
-from hachoir.parser import createParser
-from hachoir.metadata import extractMetadata
+from database.access import clinton
 from helper_funcs.display_progress import humanbytes
 from helper_funcs.help_uploadbot import DownLoadFile
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from helper_funcs.display_progress import progress_for_pyrogram, humanbytes, TimeFormatter
+from hachoir.metadata import extractMetadata
+from hachoir.parser import createParser
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.errors import UserNotParticipant
 
-@Clinton.on_message(~filters.via_bot & filters.regex(pattern=".*http.*"))
+@Clinton.on_message(filters.private & ~filters.via_bot & filters.regex(pattern=".*http.*"))
 async def echo(bot, update):
     await AddUser(bot, update)
-    imog = await update.reply_text("Processing...⚡️", reply_to_message_id=update.message_id)
+    imog = await update.reply_text("Processing...⚡", reply_to_message_id=update.message_id)
     youtube_dl_username = None
     youtube_dl_password = None
     file_name = None
-    urls = []  # Use a list to store multiple URLs
-    if "|" in update.text:
-        # ... (previous code)
-
+    url = update.text
+    if "|" in url:
+        url_parts = url.split("|")
+        if len(url_parts) == 2:
+            url = url_parts[0]
+            file_name = url_parts[1]
+        elif len(url_parts) == 4:
+            url = url_parts[0]
+            file_name = url_parts[1]
+            youtube_dl_username = url_parts[2]
+            youtube_dl_password = url_parts[3]
+        else:
+            for entity in update.entities:
+                if entity.type == "text_link":
+                    url = entity.url
+                elif entity.type == "url":
+                    o = entity.offset
+                    l = entity.length
+                    url = url[o:o + l]
+        if url is not None:
+            url = url.strip()
+        if file_name is not None:
+            file_name = file_name.strip()
+        # https://stackoverflow.com/a/761825/4723940
+        if youtube_dl_username is not None:
+            youtube_dl_username = youtube_dl_username.strip()
+        if youtube_dl_password is not None:
+            youtube_dl_password = youtube_dl_password.strip()
+        logger.info(url)
+        logger.info(file_name)
     else:
         for entity in update.entities:
             if entity.type == "text_link":
-                urls.append(entity.url)  # Append URL to the list
+                url = entity.url
             elif entity.type == "url":
                 o = entity.offset
                 l = entity.length
-                urls.append(update.text[o:o + l])  # Append URL to the list
-
-    # Process each URL in the list
-    for url in urls:
-        if Config.HTTP_PROXY != "":
-            command_to_exec = [
-                "yt-dlp",
-                "--no-warnings",
-                "--youtube-skip-dash-manifest",
-                "-j",
-                url,
-                "--proxy", Config.HTTP_PROXY
-            ]
-        else:
-            command_to_exec = [
-                "yt-dlp",
-                "--no-warnings",
-                "--youtube-skip-dash-manifest",
-                "-j",
-                url
-            ]
+                url = url[o:o + l]
+    if Config.HTTP_PROXY != "":
+        command_to_exec = [
+            "yt-dlp",
+            "--no-warnings",
+            "--youtube-skip-dash-manifest",
+            "-j",
+            url,
+            "--proxy", Config.HTTP_PROXY
+        ]
+    else:
+        command_to_exec = [
+            "yt-dlp",
+            "--no-warnings",
+            "--youtube-skip-dash-manifest",
+            "-j",
+            url
+        ]
     if youtube_dl_username is not None:
         command_to_exec.append("--username")
         command_to_exec.append(youtube_dl_username)
     if youtube_dl_password is not None:
         command_to_exec.append("--password")
         command_to_exec.append(youtube_dl_password)
-    process = await asyncio.create_subprocess_exec(*command_to_exec,
-    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    # logger.info(command_to_exec)
+    process = await asyncio.create_subprocess_exec(
+        *command_to_exec,
+        # stdout must a pipe to be accessible as process.stdout
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    # Wait for the subprocess to finish
     stdout, stderr = await process.communicate()
     e_response = stderr.decode().strip()
+    # logger.info(e_response)
     t_response = stdout.decode().strip()
+    # logger.info(t_response)
+    # https://github.com/rg3/youtube-dl/issues/2630#issuecomment-38635239
     if e_response and "nonnumeric port" not in e_response:
-        error_message = e_response.replace(Translation.ERROR_YTDLP, "")
+        # logger.warn("Status : FAIL", exc.returncode, exc.output)
+        error_message = e_response.replace("please report this issue on https://yt-dl.org/bug . Make sure you are using the latest version; see  https://yt-dl.org/update  on how to update. Be sure to call youtube-dl with the --verbose flag and include its complete output.", "")
         if "This video is only available for registered users." in error_message:
-            error_message = Translation.SET_CUSTOM_USERNAME_PASSWORD
-        else:
-            error_message = "Invalid url 🚸</code>"
-        await bot.send_message(chat_id=update.chat.id,
-        text=Translation.NO_VOID_FORMAT_FOUND.format(str(error_message)),
-        disable_web_page_preview=True, parse_mode="html",
-        reply_to_message_id=update.message_id)
-        await imog.delete(True)
+            error_message += Translation.SET_CUSTOM_USERNAME_PASSWORD
+        await bot.send_message(
+            chat_id=update.chat.id,
+            text=Translation.NO_VOID_FORMAT_FOUND.format(str(error_message)),
+            reply_to_message_id=update.message_id,
+            parse_mode="html",
+            disable_web_page_preview=True
+        )
         return False
     if t_response:
         # logger.info(t_response)
@@ -202,6 +241,7 @@ async def echo(bot, update):
             reply_to_message_id=update.message_id
         )
     else:
+        # fallback for nonnumeric port a.k.a seedbox.io
         inline_keyboard = []
         cb_string_file = "{}={}={}".format(
             "file", "LFO", "NONE")
@@ -220,8 +260,9 @@ async def echo(bot, update):
         reply_markup = InlineKeyboardMarkup(inline_keyboard)
         await imog.delete(True)
         await bot.send_message(
-        chat_id=update.chat.id,
-        text=Translation.FORMAT_SELECTION,
-        reply_markup=reply_markup,
-        parse_mode="html",
-        reply_to_message_id=update.message_id)
+            chat_id=update.chat.id,
+            text=Translation.FORMAT_SELECTION,
+            reply_markup=reply_markup,
+            parse_mode="html",
+            reply_to_message_id=update.message_id
+        )
