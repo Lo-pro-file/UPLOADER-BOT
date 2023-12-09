@@ -31,15 +31,16 @@ async def viewthumbnail(bot, update):
     thumbnail = await clinton.get_thumbnail(update.from_user.id)
     if thumbnail is not None:
         await bot.send_photo(
-        chat_id=update.chat.id,
-        photo=thumbnail,
-        caption=f"Your current saved thumbnail 🦠",
-        reply_to_message_id=update.message_id)
+            chat_id=update.chat.id,
+            photo=thumbnail,
+            caption="Your current saved thumbnail 🦠",
+            reply_to_message_id=update.message_id,
+        )
     else:
-        await update.reply_text(text=f"No Thumbnail found 🤒")
+        await update.reply_text(text="No Thumbnail found 🤒")
 
 async def Gthumb01(bot, update):
-    thumb_image_path = Config.DOWNLOAD_LOCATION + "/" + str(update.from_user.id) + ".jpg"
+    thumb_image_path = f"{Config.DOWNLOAD_LOCATION}/{str(update.from_user.id)}.jpg"
     db_thumbnail = await clinton.get_thumbnail(update.from_user.id)
     if db_thumbnail is not None:
         thumbnail = await bot.download_media(message=db_thumbnail, file_name=thumb_image_path)
@@ -53,14 +54,19 @@ async def Gthumb01(bot, update):
     return thumbnail
 
 async def Gthumb02(bot, update, duration, download_directory):
-    thumb_image_path = Config.DOWNLOAD_LOCATION + "/" + str(update.from_user.id) + ".jpg"
+    thumb_image_path = f"{Config.DOWNLOAD_LOCATION}/{str(update.from_user.id)}.jpg"
     db_thumbnail = await clinton.get_thumbnail(update.from_user.id)
-    if db_thumbnail is not None:
-        thumbnail = await bot.download_media(message=db_thumbnail, file_name=thumb_image_path)
-    else:
-        thumbnail = await take_screen_shot(download_directory, os.path.dirname(download_directory), random.randint(0, duration - 1))
-
-    return thumbnail
+    return (
+        await bot.download_media(
+            message=db_thumbnail, file_name=thumb_image_path
+        )
+        if db_thumbnail is not None
+        else await take_screen_shot(
+            download_directory,
+            os.path.dirname(download_directory),
+            random.randint(0, duration - 1),
+        )
+    )
 
 async def Mdata01(download_directory):
     width = 0
@@ -105,25 +111,25 @@ async def get_flocation(download_directory, extension):
     except Exception:
         pass
     try:
-        file_directory = download_directory + ".mkv"
+        file_directory = f"{download_directory}.mkv"
         file_size = os.stat(file_directory).st_size
         return file_size, file_directory
     except Exception:
         pass
     try:
-        file_directory = download_directory + "." + extension
+        file_directory = f"{download_directory}.{extension}"
         file_size = os.stat(file_directory).st_size
         return file_size, file_directory
     except Exception:
         pass
     try:
-        file_directory = os.path.splitext(download_directory)[0] + ".mkv"
+        file_directory = f"{os.path.splitext(download_directory)[0]}.mkv"
         file_size = os.stat(file_directory).st_size
         return file_size, file_directory
     except Exception:
         pass
     try:
-        file_directory = os.path.splitext(download_directory)[0] + "." + extension
+        file_directory = f"{os.path.splitext(download_directory)[0]}.{extension}"
         file_size = os.stat(file_directory).st_size
         return file_size, download_directory
     except Exception:
